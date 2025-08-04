@@ -15,7 +15,6 @@
     "morgan": "^1.10.0",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
-    "better-sqlite3": "^9.2.2",
     "dotenv": "^16.3.1",
     "cookie-parser": "^1.4.6"
   },
@@ -28,7 +27,6 @@
   "keywords": [
     "inventory",
     "management",
-    "sqlite",
     "express",
     "uganda"
   ],
