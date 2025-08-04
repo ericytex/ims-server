@@ -8,15 +8,9 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
-const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
-// Supabase configuration
-const supabaseUrl = process.env.SUPABASE_URL || 'https://your-project.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || 'your-anon-key';
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Middleware
 app.use(helmet());
@@ -34,77 +28,82 @@ app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// Initialize database with default data
-const initDatabase = async () => {
+// Simple JSON-based storage
+const DATA_FILE = path.join(__dirname, 'data', 'ims_data.json');
+
+// Ensure data directory exists
+const dataDir = path.dirname(DATA_FILE);
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+// Initialize data storage
+let data = {
+  users: [],
+  facilities: [],
+  inventory_items: [],
+  stock_transactions: [],
+  transfers: [],
+  notifications: []
+};
+
+// Load data from file
+const loadData = () => {
   try {
-    // Check if users exist
-    const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('*')
-      .limit(1);
-
-    if (usersError) {
-      console.error('Error checking users:', usersError);
-      return;
+    if (fs.existsSync(DATA_FILE)) {
+      const fileData = fs.readFileSync(DATA_FILE, 'utf8');
+      data = JSON.parse(fileData);
     }
-
-    // Insert default data if no users exist
-    if (!users || users.length === 0) {
-      const defaultUsers = [
-        { email: 'admin@ims.com', password: bcrypt.hashSync('admin123', 10), name: 'System Administrator', role: 'admin' },
-        { email: 'regional@ims.com', password: bcrypt.hashSync('regional123', 10), name: 'Regional Manager', role: 'regional_manager' },
-        { email: 'district@ims.com', password: bcrypt.hashSync('district123', 10), name: 'District Manager', role: 'district_manager' },
-        { email: 'facility@ims.com', password: bcrypt.hashSync('facility123', 10), name: 'Facility Manager', role: 'facility_manager' },
-        { email: 'worker@ims.com', password: bcrypt.hashSync('worker123', 10), name: 'Inventory Worker', role: 'inventory_worker' }
-      ];
-
-      const { error: insertUsersError } = await supabase
-        .from('users')
-        .insert(defaultUsers);
-
-      if (insertUsersError) {
-        console.error('Error inserting default users:', insertUsersError);
-        return;
-      }
-
-      const defaultFacilities = [
-        { name: 'Main Warehouse', type: 'warehouse', location: 'Kampala', district: 'Kampala', region: 'Central' },
-        { name: 'Distribution Center', type: 'distribution', location: 'Entebbe', district: 'Wakiso', region: 'Central' },
-        { name: 'Regional Warehouse', type: 'warehouse', location: 'Jinja', district: 'Jinja', region: 'Eastern' },
-        { name: 'Retail Store', type: 'retail', location: 'Mbarara', district: 'Mbarara', region: 'Western' }
-      ];
-
-      const { error: insertFacilitiesError } = await supabase
-        .from('facilities')
-        .insert(defaultFacilities);
-
-      if (insertFacilitiesError) {
-        console.error('Error inserting default facilities:', insertFacilitiesError);
-        return;
-      }
-
-      const sampleItems = [
-        { name: 'Laptop Computers', description: 'High-performance laptops for office use', category: 'Electronics', sku: 'LAP-001', unit: 'units', current_stock: 45, min_stock: 20, max_stock: 100, cost: 1200000, supplier: 'Tech Supplies Ltd', location: 'A1-01', status: 'active' },
-        { name: 'Office Chairs', description: 'Ergonomic office chairs', category: 'Furniture', sku: 'CHAIR-002', unit: 'pieces', current_stock: 120, min_stock: 50, max_stock: 200, cost: 150000, supplier: 'Furniture World', location: 'B2-03', status: 'active' },
-        { name: 'Printer Paper', description: 'A4 printer paper, 80gsm', category: 'Office Supplies', sku: 'PAPER-003', unit: 'reams', current_stock: 85, min_stock: 30, max_stock: 150, cost: 25000, supplier: 'Paper Plus', location: 'C3-02', status: 'active' }
-      ];
-
-      const { error: insertItemsError } = await supabase
-        .from('inventory_items')
-        .insert(sampleItems);
-
-      if (insertItemsError) {
-        console.error('Error inserting sample items:', insertItemsError);
-        return;
-      }
-
-      console.log('Default data inserted successfully');
-    }
-    
-    console.log('Database initialized successfully');
   } catch (error) {
-    console.error('Error initializing database:', error);
+    console.error('Error loading data:', error);
   }
+};
+
+// Save data to file
+const saveData = () => {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('Error saving data:', error);
+  }
+};
+
+// Initialize database with default data
+const initDatabase = () => {
+  loadData();
+  
+  // Insert default data if no users exist
+  if (data.users.length === 0) {
+    const defaultUsers = [
+      { id: 1, email: 'admin@ims.com', password: bcrypt.hashSync('admin123', 10), name: 'System Administrator', role: 'admin', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 2, email: 'regional@ims.com', password: bcrypt.hashSync('regional123', 10), name: 'Regional Manager', role: 'regional_manager', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 3, email: 'district@ims.com', password: bcrypt.hashSync('district123', 10), name: 'District Manager', role: 'district_manager', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 4, email: 'facility@ims.com', password: bcrypt.hashSync('facility123', 10), name: 'Facility Manager', role: 'facility_manager', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 5, email: 'worker@ims.com', password: bcrypt.hashSync('worker123', 10), name: 'Inventory Worker', role: 'inventory_worker', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+    ];
+
+    const defaultFacilities = [
+      { id: 1, name: 'Main Warehouse', type: 'warehouse', location: 'Kampala', district: 'Kampala', region: 'Central', created_at: new Date().toISOString() },
+      { id: 2, name: 'Distribution Center', type: 'distribution', location: 'Entebbe', district: 'Wakiso', region: 'Central', created_at: new Date().toISOString() },
+      { id: 3, name: 'Regional Warehouse', type: 'warehouse', location: 'Jinja', district: 'Jinja', region: 'Eastern', created_at: new Date().toISOString() },
+      { id: 4, name: 'Retail Store', type: 'retail', location: 'Mbarara', district: 'Mbarara', region: 'Western', created_at: new Date().toISOString() }
+    ];
+
+    const sampleItems = [
+      { id: 1, name: 'Laptop Computers', description: 'High-performance laptops for office use', category: 'Electronics', sku: 'LAP-001', unit: 'units', current_stock: 45, min_stock: 20, max_stock: 100, cost: 1200000, supplier: 'Tech Supplies Ltd', location: 'A1-01', status: 'active', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 2, name: 'Office Chairs', description: 'Ergonomic office chairs', category: 'Furniture', sku: 'CHAIR-002', unit: 'pieces', current_stock: 120, min_stock: 50, max_stock: 200, cost: 150000, supplier: 'Furniture World', location: 'B2-03', status: 'active', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 3, name: 'Printer Paper', description: 'A4 printer paper, 80gsm', category: 'Office Supplies', sku: 'PAPER-003', unit: 'reams', current_stock: 85, min_stock: 30, max_stock: 150, cost: 25000, supplier: 'Paper Plus', location: 'C3-02', status: 'active', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+    ];
+
+    data.users = defaultUsers;
+    data.facilities = defaultFacilities;
+    data.inventory_items = sampleItems;
+    
+    saveData();
+    console.log('Default data inserted successfully');
+  }
+  
+  console.log('Database initialized successfully');
 };
 
 // Initialize database
@@ -180,25 +179,16 @@ app.get('/api/health', (req, res) => {
 });
 
 // Enhanced authentication endpoints
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
   }
 
-  const { data: users, error: usersError } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email);
+  const user = data.users.find(u => u.email === email);
 
-  if (usersError || !users || users.length === 0) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  const user = users[0];
-
-  if (!bcrypt.compareSync(password, user.password)) {
+  if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
@@ -243,39 +233,24 @@ app.get('/api/auth/status', authenticateBypass, authenticateToken, (req, res) =>
 });
 
 // Users endpoints
-app.get('/api/users', authenticateBypass, authenticateToken, async (req, res) => {
-  const { data: users, error: usersError } = await supabase
-    .from('users')
-    .select('*');
-
-  if (usersError) {
-    console.error('Error fetching users:', usersError);
-    return res.status(500).json({ error: 'Failed to fetch users' });
-  }
-  res.json(users);
+app.get('/api/users', authenticateBypass, authenticateToken, (req, res) => {
+  res.json(data.users);
 });
 
 // Facilities endpoints
-app.get('/api/facilities', authenticateBypass, authenticateToken, async (req, res) => {
-  const { data: facilities, error: facilitiesError } = await supabase
-    .from('facilities')
-    .select('*');
-
-  if (facilitiesError) {
-    console.error('Error fetching facilities:', facilitiesError);
-    return res.status(500).json({ error: 'Failed to fetch facilities' });
-  }
-  res.json(facilities);
+app.get('/api/facilities', authenticateBypass, authenticateToken, (req, res) => {
+  res.json(data.facilities);
 });
 
-app.post('/api/facilities', authenticateBypass, authenticateToken, async (req, res) => {
+app.post('/api/facilities', authenticateBypass, authenticateToken, (req, res) => {
   const { name, type, location, district, region } = req.body;
 
-  if (!name || !type || !location || !district || !region) {
-    return res.status(400).json({ error: 'All fields are required' });
+  if (!name || !type) {
+    return res.status(400).json({ error: 'Name and type required' });
   }
 
   const newFacility = {
+    id: data.facilities.length + 1, // Simple ID generation
     name,
     type,
     location,
@@ -284,49 +259,32 @@ app.post('/api/facilities', authenticateBypass, authenticateToken, async (req, r
     created_at: new Date().toISOString()
   };
 
-  const { data: insertedFacility, error: insertError } = await supabase
-    .from('facilities')
-    .insert([newFacility]);
-
-  if (insertError) {
-    console.error('Error creating facility:', insertError);
-    return res.status(500).json({ error: 'Failed to create facility' });
-  }
-  res.json({ id: insertedFacility[0].id, message: 'Facility created successfully' });
+  data.facilities.push(newFacility);
+  saveData();
+  res.json({ id: newFacility.id, message: 'Facility created successfully' });
 });
 
 // Inventory endpoints
-app.get('/api/inventory', authenticateBypass, authenticateToken, async (req, res) => {
-  const { data: inventoryItems, error: inventoryError } = await supabase
-    .from('inventory_items')
-    .select('*');
-
-  if (inventoryError) {
-    console.error('Error fetching inventory items:', inventoryError);
-    return res.status(500).json({ error: 'Failed to fetch inventory items' });
-  }
-  
-  const items = await Promise.all(inventoryItems.map(async (item) => {
-    const facilityName = item.facility_id ? 
-      (await supabase.from('facilities').select('name').eq('id', item.facility_id).single()).data?.name || 'N/A' : 
-      'N/A';
-    return {
-      ...item,
-      facility_name: facilityName
-    };
+app.get('/api/inventory', authenticateBypass, authenticateToken, (req, res) => {
+  const items = data.inventory_items.map(item => ({
+    ...item,
+    facility_name: data.facilities.find(f => f.id === item.facility_id)?.name || 'N/A'
   }));
-  
   res.json(items);
 });
 
-app.post('/api/inventory', authenticateBypass, authenticateToken, async (req, res) => {
-  const { name, description, category, sku, unit, current_stock, min_stock, max_stock, cost, supplier, facility_id, location, expiry_date, status } = req.body;
+app.post('/api/inventory', authenticateBypass, authenticateToken, (req, res) => {
+  const {
+    name, description, category, sku, unit, current_stock, min_stock, max_stock,
+    cost, supplier, facility_id, location, expiry_date, status
+  } = req.body;
 
-  if (!name || !category || !sku || !unit) {
-    return res.status(400).json({ error: 'Name, category, SKU, and unit are required' });
+  if (!name || !sku || !category) {
+    return res.status(400).json({ error: 'Name, SKU, and category required' });
   }
 
   const newItem = {
+    id: data.inventory_items.length + 1, // Simple ID generation
     name,
     description,
     category,
@@ -345,54 +303,34 @@ app.post('/api/inventory', authenticateBypass, authenticateToken, async (req, re
     updated_at: new Date().toISOString()
   };
 
-  const { data: insertedItem, error: insertError } = await supabase
-    .from('inventory_items')
-    .insert([newItem]);
-
-  if (insertError) {
-    console.error('Error creating inventory item:', insertError);
-    return res.status(500).json({ error: 'Failed to create inventory item' });
-  }
-  res.json({ id: insertedItem[0].id, message: 'Inventory item created successfully' });
+  data.inventory_items.push(newItem);
+  saveData();
+  res.json({ id: newItem.id, message: 'Inventory item created successfully' });
 });
 
 // Stock transactions endpoints
-app.get('/api/transactions', authenticateBypass, authenticateToken, async (req, res) => {
-  const { data: stockTransactions, error: transactionsError } = await supabase
-    .from('stock_transactions')
-    .select('*');
-
-  if (transactionsError) {
-    console.error('Error fetching stock transactions:', transactionsError);
-    return res.status(500).json({ error: 'Failed to fetch stock transactions' });
-  }
-  
-  const transactions = await Promise.all(stockTransactions.map(async (t) => {
-    const [itemResult, facilityResult, userResult] = await Promise.all([
-      supabase.from('inventory_items').select('name').eq('id', t.item_id).single(),
-      supabase.from('facilities').select('name').eq('id', t.facility_id).single(),
-      supabase.from('users').select('name').eq('id', t.user_id).single()
-    ]);
-    
-    return {
-      ...t,
-      item_name: itemResult.data?.name || 'N/A',
-      facility_name: facilityResult.data?.name || 'N/A',
-      user_name: userResult.data?.name || 'N/A'
-    };
+app.get('/api/transactions', authenticateBypass, authenticateToken, (req, res) => {
+  const transactions = data.stock_transactions.map(t => ({
+    ...t,
+    item_name: data.inventory_items.find(i => i.id === t.item_id)?.name || 'N/A',
+    facility_name: data.facilities.find(f => f.id === t.facility_id)?.name || 'N/A',
+    user_name: data.users.find(u => u.id === t.user_id)?.name || 'N/A'
   }));
-  
   res.json(transactions);
 });
 
-app.post('/api/transactions', authenticateBypass, authenticateToken, async (req, res) => {
-  const { type, item_id, quantity, unit, facility_id, source, destination, reason, notes, date, time, status } = req.body;
+app.post('/api/transactions', authenticateBypass, authenticateToken, (req, res) => {
+  const {
+    type, item_id, quantity, unit, facility_id, source, destination,
+    reason, notes, date, time, status
+  } = req.body;
 
-  if (!type || !item_id || !quantity || !unit || !facility_id || !reason) {
-    return res.status(400).json({ error: 'Type, item_id, quantity, unit, facility_id, and reason are required' });
+  if (!type || !item_id || !quantity || !facility_id || !reason) {
+    return res.status(400).json({ error: 'Missing required fields' });
   }
 
   const newTransaction = {
+    id: data.stock_transactions.length + 1, // Simple ID generation
     type,
     item_id,
     quantity,
@@ -409,56 +347,35 @@ app.post('/api/transactions', authenticateBypass, authenticateToken, async (req,
     created_at: new Date().toISOString()
   };
 
-  const { data: insertedTransaction, error: insertError } = await supabase
-    .from('stock_transactions')
-    .insert([newTransaction]);
-
-  if (insertError) {
-    console.error('Error creating stock transaction:', insertError);
-    return res.status(500).json({ error: 'Failed to create stock transaction' });
-  }
-  res.json({ id: insertedTransaction[0].id, message: 'Transaction created successfully' });
+  data.stock_transactions.push(newTransaction);
+  saveData();
+  res.json({ id: newTransaction.id, message: 'Transaction created successfully' });
 });
 
 // Transfers endpoints
-app.get('/api/transfers', authenticateBypass, authenticateToken, async (req, res) => {
-  const { data: transfers, error: transfersError } = await supabase
-    .from('transfers')
-    .select('*');
-
-  if (transfersError) {
-    console.error('Error fetching transfers:', transfersError);
-    return res.status(500).json({ error: 'Failed to fetch transfers' });
-  }
-  
-  const transfersWithNames = await Promise.all(transfers.map(async (t) => {
-    const [fromFacilityResult, toFacilityResult, requestedByResult, approvedByResult] = await Promise.all([
-      supabase.from('facilities').select('name').eq('id', t.from_facility_id).single(),
-      supabase.from('facilities').select('name').eq('id', t.to_facility_id).single(),
-      supabase.from('users').select('name').eq('id', t.requested_by).single(),
-      t.approved_by ? supabase.from('users').select('name').eq('id', t.approved_by).single() : Promise.resolve({ data: null })
-    ]);
-    
-    return {
-      ...t,
-      from_facility_name: fromFacilityResult.data?.name || 'N/A',
-      to_facility_name: toFacilityResult.data?.name || 'N/A',
-      requested_by_name: requestedByResult.data?.name || 'N/A',
-      approved_by_name: approvedByResult.data?.name || 'N/A'
-    };
+app.get('/api/transfers', authenticateBypass, authenticateToken, (req, res) => {
+  const transfers = data.transfers.map(t => ({
+    ...t,
+    from_facility_name: data.facilities.find(f => f.id === t.from_facility_id)?.name || 'N/A',
+    to_facility_name: data.facilities.find(f => f.id === t.to_facility_id)?.name || 'N/A',
+    requested_by_name: data.users.find(u => u.id === t.requested_by)?.name || 'N/A',
+    approved_by_name: data.users.find(u => u.id === t.approved_by)?.name || 'N/A'
   }));
-  
-  res.json(transfersWithNames);
+  res.json(transfers);
 });
 
-app.post('/api/transfers', authenticateBypass, authenticateToken, async (req, res) => {
-  const { item_name, item_id, quantity, unit, from_facility_id, to_facility_id, reason, priority, notes } = req.body;
+app.post('/api/transfers', authenticateBypass, authenticateToken, (req, res) => {
+  const {
+    item_name, item_id, quantity, unit, from_facility_id, to_facility_id,
+    reason, priority, notes
+  } = req.body;
 
-  if (!item_name || !item_id || !quantity || !unit || !from_facility_id || !to_facility_id || !reason) {
-    return res.status(400).json({ error: 'All fields are required' });
+  if (!item_name || !item_id || !quantity || !from_facility_id || !to_facility_id || !reason) {
+    return res.status(400).json({ error: 'Missing required fields' });
   }
 
   const newTransfer = {
+    id: data.transfers.length + 1, // Simple ID generation
     item_name,
     item_id,
     quantity,
@@ -479,138 +396,113 @@ app.post('/api/transfers', authenticateBypass, authenticateToken, async (req, re
     updated_at: new Date().toISOString()
   };
 
-  const { data: insertedTransfer, error: insertError } = await supabase
-    .from('transfers')
-    .insert([newTransfer]);
-
-  if (insertError) {
-    console.error('Error creating transfer:', insertError);
-    return res.status(500).json({ error: 'Failed to create transfer' });
-  }
-  res.json({ id: insertedTransfer[0].id, message: 'Transfer request created successfully' });
+  data.transfers.push(newTransfer);
+  saveData();
+  res.json({ id: newTransfer.id, message: 'Transfer request created successfully' });
 });
 
-app.put('/api/transfers/:id/status', authenticateBypass, authenticateToken, async (req, res) => {
+// Update transfer status
+app.put('/api/transfers/:id/status', authenticateBypass, authenticateToken, (req, res) => {
   const { id } = req.params;
   const { status, approved_by } = req.body;
 
   if (!status) {
-    return res.status(400).json({ error: 'Status is required' });
+    return res.status(400).json({ error: 'Status required' });
   }
 
-  const { data: updatedTransfer, error: updateError } = await supabase
-    .from('transfers')
-    .update({ status, approved_by: approved_by || req.user.id, approval_date: new Date().toISOString().split('T')[0] })
-    .eq('id', parseInt(id))
-    .select()
-    .single();
-
-  if (updateError) {
-    console.error('Error updating transfer status:', updateError);
-    return res.status(500).json({ error: 'Failed to update transfer status' });
+  const transferIndex = data.transfers.findIndex(t => t.id === parseInt(id));
+  if (transferIndex === -1) {
+    return res.status(404).json({ error: 'Transfer not found' });
   }
+
+  const updatedTransfer = {
+    ...data.transfers[transferIndex],
+    status,
+    approved_by: approved_by || req.user.id,
+    approval_date: new Date().toISOString().split('T')[0]
+  };
+
+  data.transfers[transferIndex] = updatedTransfer;
+  saveData();
   res.json({ message: 'Transfer status updated successfully' });
 });
 
 // Reports endpoints
-app.get('/api/reports/stock-levels', authenticateBypass, authenticateToken, async (req, res) => {
-  const { data: inventoryItems, error: inventoryError } = await supabase
-    .from('inventory_items')
-    .select('*');
-
-  if (inventoryError) {
-    console.error('Error fetching inventory items for stock levels:', inventoryError);
-    return res.status(500).json({ error: 'Failed to fetch inventory items for stock levels' });
-  }
-  
-  const stockLevels = await Promise.all(inventoryItems.map(async (item) => {
-    const facilityName = item.facility_id ? 
-      (await supabase.from('facilities').select('name').eq('id', item.facility_id).single()).data?.name || 'N/A' : 
-      'N/A';
-    return {
-      ...item,
-      facility_name: facilityName,
-      stock_status: (item.current_stock <= item.min_stock) ? 'low' :
-                     (item.current_stock <= item.min_stock * 1.5) ? 'warning' : 'good'
-    };
+app.get('/api/reports/stock-levels', authenticateBypass, authenticateToken, (req, res) => {
+  const stockLevels = data.inventory_items.map(item => ({
+    ...item,
+    facility_name: data.facilities.find(f => f.id === item.facility_id)?.name || 'N/A',
+    stock_status: (item.current_stock <= item.min_stock) ? 'low' :
+                   (item.current_stock <= item.min_stock * 1.5) ? 'warning' : 'good'
   }));
-  
   res.json(stockLevels);
 });
 
-app.get('/api/reports/consumption', authenticateBypass, authenticateToken, async (req, res) => {
-  const { data: inventoryItems, error: inventoryError } = await supabase
-    .from('inventory_items')
-    .select('*');
-
-  if (inventoryError) {
-    console.error('Error fetching inventory items for consumption:', inventoryError);
-    return res.status(500).json({ error: 'Failed to fetch inventory items for consumption' });
-  }
-  
-  const consumption = await Promise.all(inventoryItems.map(async (item) => {
-    const [facilityResult, stockInResult, stockOutResult, allTransactionsResult] = await Promise.all([
-      item.facility_id ? supabase.from('facilities').select('name').eq('id', item.facility_id).single() : Promise.resolve({ data: null }),
-      supabase.from('stock_transactions').select('quantity').eq('item_id', item.id).eq('type', 'stock_in'),
-      supabase.from('stock_transactions').select('quantity').eq('item_id', item.id).eq('type', 'stock_out'),
-      supabase.from('stock_transactions').select('quantity, type').eq('item_id', item.id)
-    ]);
-    
-    const totalIn = stockInResult.data?.reduce((sum, t) => sum + t.quantity, 0) || 0;
-    const totalOut = stockOutResult.data?.reduce((sum, t) => sum + t.quantity, 0) || 0;
-    const netConsumption = allTransactionsResult.data?.reduce((sum, t) => {
+app.get('/api/reports/consumption', authenticateBypass, authenticateToken, (req, res) => {
+  const consumption = data.inventory_items.map(item => ({
+    ...item,
+    facility_name: data.facilities.find(f => f.id === item.facility_id)?.name || 'N/A',
+    total_in: data.stock_transactions.filter(t => t.item_id === item.id && t.type === 'stock_in').reduce((sum, t) => sum + t.quantity, 0),
+    total_out: data.stock_transactions.filter(t => t.item_id === item.id && t.type === 'stock_out').reduce((sum, t) => sum + t.quantity, 0),
+    net_consumption: data.stock_transactions.filter(t => t.item_id === item.id).reduce((sum, t) => {
       if (t.type === 'stock_in') sum += t.quantity;
       if (t.type === 'stock_out') sum -= t.quantity;
       return sum;
-    }, 0) || 0;
-    
-    return {
-      ...item,
-      facility_name: facilityResult.data?.name || 'N/A',
-      total_in: totalIn,
-      total_out: totalOut,
-      net_consumption: netConsumption
-    };
+    }, 0)
   }));
-  
   res.json(consumption);
 });
 
 // Central Database endpoints
-app.get('/api/central-db/download', authenticateBypass, authenticateToken, async (req, res) => {
-  try {
-    // Fetch all data from Supabase
-    const [usersResult, facilitiesResult, inventoryResult, transactionsResult, transfersResult] = await Promise.all([
-      supabase.from('users').select('*'),
-      supabase.from('facilities').select('*'),
-      supabase.from('inventory_items').select('*'),
-      supabase.from('stock_transactions').select('*'),
-      supabase.from('transfers').select('*')
-    ]);
+const CENTRAL_DATA_FILE = path.join(__dirname, 'data', 'central_ims_data.json');
 
-    if (usersResult.error || facilitiesResult.error || inventoryResult.error || transactionsResult.error || transfersResult.error) {
-      console.error('Error fetching central data:', { 
-        usersError: usersResult.error, 
-        facilitiesError: facilitiesResult.error, 
-        inventoryError: inventoryResult.error, 
-        transactionsError: transactionsResult.error, 
-        transfersError: transfersResult.error 
-      });
-      return res.status(500).json({ error: 'Failed to fetch central data' });
+// Ensure central data directory exists
+const centralDataDir = path.dirname(CENTRAL_DATA_FILE);
+if (!fs.existsSync(centralDataDir)) {
+  fs.mkdirSync(centralDataDir, { recursive: true });
+}
+
+// Initialize central database with JSON storage
+function initCentralDb() {
+  try {
+    if (!fs.existsSync(CENTRAL_DATA_FILE)) {
+      const centralData = {
+        users: [
+          { id: 'admin-1', name: 'Admin User', email: 'admin@ims.com', phone: '+256700000000', role: 'admin', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+        ],
+        facilities: [
+          { id: 'facility-1', name: 'Main Warehouse', type: 'warehouse', region: 'Central', district: 'Kampala', address: 'Kampala, Uganda', contact_person: 'John Doe', contact_phone: '+256700000001', created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: 'active' }
+        ],
+        inventory_items: [
+          { id: 'item-1', name: 'Paracetamol 500mg', description: 'Pain relief medication', category: 'Drugs', sku: 'PAR001', unit: 'Packs', current_stock: 500, min_stock: 50, max_stock: 1000, cost: 5000.00, supplier: 'Pharma Ltd', facility_id: 'facility-1', location: 'Shelf A1', created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: 'active' }
+        ],
+        stock_transactions: [],
+        transfers: [],
+        notifications: []
+      };
+      
+      fs.writeFileSync(CENTRAL_DATA_FILE, JSON.stringify(centralData, null, 2));
+      console.log('✅ Central database initialized');
+    }
+  } catch (error) {
+    console.error('❌ Error initializing central database:', error);
+  }
+}
+
+// Initialize central database
+initCentralDb();
+
+// Download central database
+app.get('/api/central-db/download', authenticateBypass, authenticateToken, (req, res) => {
+  try {
+    if (!fs.existsSync(CENTRAL_DATA_FILE)) {
+      return res.status(404).json({ error: 'Central database not found' });
     }
 
-    const centralData = {
-      users: usersResult.data || [],
-      facilities: facilitiesResult.data || [],
-      inventory_items: inventoryResult.data || [],
-      stock_transactions: transactionsResult.data || [],
-      transfers: transfersResult.data || [],
-      timestamp: new Date().toISOString()
-    };
-
+    const centralData = fs.readFileSync(CENTRAL_DATA_FILE, 'utf8');
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="central_ims_data.json"');
-    res.send(JSON.stringify(centralData, null, 2));
+    res.send(centralData);
     
     console.log('📥 Central database downloaded');
   } catch (error) {
@@ -620,56 +512,20 @@ app.get('/api/central-db/download', authenticateBypass, authenticateToken, async
 });
 
 // Upload database from client
-app.post('/api/central-db/upload', authenticateBypass, authenticateToken, async (req, res) => {
+app.post('/api/central-db/upload', authenticateBypass, authenticateToken, (req, res) => {
   try {
+    // Handle the uploaded database data
     const uploadedData = req.body.database || req.body;
     
-    if (!uploadedData || typeof uploadedData !== 'object') {
-      return res.status(400).json({ error: 'Invalid data format' });
+    // Create backup of current database
+    if (fs.existsSync(CENTRAL_DATA_FILE)) {
+      const backupPath = `${CENTRAL_DATA_FILE}.backup.${Date.now()}`;
+      fs.copyFileSync(CENTRAL_DATA_FILE, backupPath);
+      console.log(`💾 Backup created: ${backupPath}`);
     }
 
-    // Clear existing data and insert new data
-    const clearPromises = [
-      supabase.from('users').delete().neq('id', 0),
-      supabase.from('facilities').delete().neq('id', 0),
-      supabase.from('inventory_items').delete().neq('id', 0),
-      supabase.from('stock_transactions').delete().neq('id', 0),
-      supabase.from('transfers').delete().neq('id', 0)
-    ];
-
-    await Promise.all(clearPromises);
-
-    // Insert new data
-    const insertPromises = [];
-    
-    if (uploadedData.users && uploadedData.users.length > 0) {
-      insertPromises.push(supabase.from('users').insert(uploadedData.users));
-    }
-    
-    if (uploadedData.facilities && uploadedData.facilities.length > 0) {
-      insertPromises.push(supabase.from('facilities').insert(uploadedData.facilities));
-    }
-    
-    if (uploadedData.inventory_items && uploadedData.inventory_items.length > 0) {
-      insertPromises.push(supabase.from('inventory_items').insert(uploadedData.inventory_items));
-    }
-    
-    if (uploadedData.stock_transactions && uploadedData.stock_transactions.length > 0) {
-      insertPromises.push(supabase.from('stock_transactions').insert(uploadedData.stock_transactions));
-    }
-    
-    if (uploadedData.transfers && uploadedData.transfers.length > 0) {
-      insertPromises.push(supabase.from('transfers').insert(uploadedData.transfers));
-    }
-
-    const results = await Promise.all(insertPromises);
-    
-    // Check for errors
-    const errors = results.filter(result => result.error);
-    if (errors.length > 0) {
-      console.error('Errors during data upload:', errors);
-      return res.status(500).json({ error: 'Failed to upload some data' });
-    }
+    // Write new database
+    fs.writeFileSync(CENTRAL_DATA_FILE, JSON.stringify(uploadedData, null, 2));
     
     console.log('📤 Central database uploaded successfully');
     res.json({ 
