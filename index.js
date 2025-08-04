@@ -454,245 +454,55 @@ app.get('/api/reports/consumption', authenticateBypass, authenticateToken, (req,
 });
 
 // Central Database endpoints
-const CENTRAL_DB_PATH = path.join(__dirname, 'data', 'central_ims.db');
+const CENTRAL_DATA_FILE = path.join(__dirname, 'data', 'central_ims_data.json');
 
 // Ensure central data directory exists
-const centralDataDir = path.dirname(CENTRAL_DB_PATH);
+const centralDataDir = path.dirname(CENTRAL_DATA_FILE);
 if (!fs.existsSync(centralDataDir)) {
   fs.mkdirSync(centralDataDir, { recursive: true });
 }
 
-// Initialize central database
+// Initialize central database with JSON storage
 function initCentralDb() {
-  return new Promise((resolve, reject) => {
-    if (!fs.existsSync(CENTRAL_DB_PATH)) {
-      const centralDb = new sqlite3.Database(CENTRAL_DB_PATH);
+  try {
+    if (!fs.existsSync(CENTRAL_DATA_FILE)) {
+      const centralData = {
+        users: [
+          { id: 'admin-1', name: 'Admin User', email: 'admin@ims.com', phone: '+256700000000', role: 'admin', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+        ],
+        facilities: [
+          { id: 'facility-1', name: 'Main Warehouse', type: 'warehouse', region: 'Central', district: 'Kampala', address: 'Kampala, Uganda', contact_person: 'John Doe', contact_phone: '+256700000001', created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: 'active' }
+        ],
+        inventory_items: [
+          { id: 'item-1', name: 'Paracetamol 500mg', description: 'Pain relief medication', category: 'Drugs', sku: 'PAR001', unit: 'Packs', current_stock: 500, min_stock: 50, max_stock: 1000, cost: 5000.00, supplier: 'Pharma Ltd', facility_id: 'facility-1', location: 'Shelf A1', created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: 'active' }
+        ],
+        stock_transactions: [],
+        transfers: [],
+        notifications: []
+      };
       
-      // Create schema for central database
-      centralDb.run(`
-        CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          email TEXT UNIQUE NOT NULL,
-          phone TEXT,
-          role TEXT NOT NULL CHECK (role IN ('admin', 'regional_manager', 'district_manager', 'facility_manager', 'inventory_worker')),
-          facility_id TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )
-      `, (err) => {
-        if (err) {
-          console.error('Error creating central users table:', err);
-          reject(err);
-          return;
-        }
-
-        centralDb.run(`
-          CREATE TABLE IF NOT EXISTS facilities (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL CHECK (type IN ('warehouse', 'distribution_center', 'retail_outlet')),
-            region TEXT NOT NULL,
-            district TEXT NOT NULL,
-            address TEXT,
-            gps_coordinates TEXT,
-            contact_person TEXT,
-            contact_phone TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive'))
-          )
-        `, (err) => {
-          if (err) {
-            console.error('Error creating central facilities table:', err);
-            reject(err);
-            return;
-          }
-
-          centralDb.run(`
-            CREATE TABLE IF NOT EXISTS inventory_items (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              description TEXT,
-              category TEXT NOT NULL,
-              sku TEXT UNIQUE,
-              unit TEXT NOT NULL,
-              current_stock INTEGER DEFAULT 0,
-              min_stock INTEGER DEFAULT 0,
-              max_stock INTEGER DEFAULT 0,
-              cost REAL DEFAULT 0,
-              supplier TEXT,
-              facility_id TEXT NOT NULL,
-              location TEXT,
-              expiry_date TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'discontinued')),
-              FOREIGN KEY (facility_id) REFERENCES facilities (id)
-            )
-          `, (err) => {
-            if (err) {
-              console.error('Error creating central inventory_items table:', err);
-              reject(err);
-              return;
-            }
-
-            centralDb.run(`
-              CREATE TABLE IF NOT EXISTS stock_transactions (
-                id TEXT PRIMARY KEY,
-                item_id TEXT NOT NULL,
-                facility_id TEXT NOT NULL,
-                type TEXT NOT NULL CHECK (type IN ('stock_in', 'stock_out', 'transfer', 'adjustment')),
-                quantity INTEGER NOT NULL,
-                unit TEXT NOT NULL,
-                source TEXT,
-                destination TEXT,
-                reason TEXT NOT NULL,
-                notes TEXT,
-                user_id TEXT NOT NULL,
-                transaction_date TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                sync_status TEXT NOT NULL DEFAULT 'synced' CHECK (sync_status IN ('pending', 'synced', 'failed')),
-                sync_attempts INTEGER DEFAULT 0,
-                FOREIGN KEY (item_id) REFERENCES inventory_items (id),
-                FOREIGN KEY (facility_id) REFERENCES facilities (id),
-                FOREIGN KEY (user_id) REFERENCES users (id)
-              )
-            `, (err) => {
-              if (err) {
-                console.error('Error creating central stock_transactions table:', err);
-                reject(err);
-                return;
-              }
-
-              centralDb.run(`
-                CREATE TABLE IF NOT EXISTS transfers (
-                  id TEXT PRIMARY KEY,
-                  item_id TEXT NOT NULL,
-                  quantity INTEGER NOT NULL,
-                  unit TEXT NOT NULL,
-                  from_facility_id TEXT NOT NULL,
-                  to_facility_id TEXT NOT NULL,
-                  requested_by TEXT NOT NULL,
-                  request_date TEXT NOT NULL,
-                  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'in_transit', 'delivered', 'cancelled')),
-                  approved_by TEXT,
-                  approval_date TEXT,
-                  delivery_date TEXT,
-                  reason TEXT NOT NULL,
-                  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
-                  notes TEXT,
-                  tracking_number TEXT,
-                  created_at TEXT NOT NULL,
-                  updated_at TEXT NOT NULL,
-                  sync_status TEXT NOT NULL DEFAULT 'synced' CHECK (sync_status IN ('pending', 'synced', 'failed')),
-                  FOREIGN KEY (item_id) REFERENCES inventory_items (id),
-                  FOREIGN KEY (from_facility_id) REFERENCES facilities (id),
-                  FOREIGN KEY (to_facility_id) REFERENCES facilities (id),
-                  FOREIGN KEY (requested_by) REFERENCES users (id),
-                  FOREIGN KEY (approved_by) REFERENCES users (id)
-                )
-              `, (err) => {
-                if (err) {
-                  console.error('Error creating central transfers table:', err);
-                  reject(err);
-                  return;
-                }
-
-                centralDb.run(`
-                  CREATE TABLE IF NOT EXISTS notifications (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    type TEXT NOT NULL CHECK (type IN ('stock_alert', 'transfer_update', 'system_notification')),
-                    title TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    read BOOLEAN DEFAULT FALSE,
-                    created_at TEXT NOT NULL,
-                    data TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                  )
-                `, (err) => {
-                  if (err) {
-                    console.error('Error creating central notifications table:', err);
-                    reject(err);
-                    return;
-                  }
-
-                  // Insert some initial data
-                  centralDb.run(`
-                    INSERT OR IGNORE INTO users (id, name, email, phone, role, created_at, updated_at) 
-                    VALUES ('admin-1', 'Admin User', 'admin@ims.com', '+256700000000', 'admin', 
-                            datetime('now'), datetime('now'))
-                  `, (err) => {
-                    if (err) {
-                      console.error('Error inserting central default user:', err);
-                      reject(err);
-                      return;
-                    }
-                    
-                    centralDb.run(`
-                      INSERT OR IGNORE INTO facilities (id, name, type, region, district, address, 
-                               contact_person, contact_phone, created_at, updated_at) 
-                      VALUES ('facility-1', 'Main Warehouse', 'warehouse', 'Central', 'Kampala', 
-                              'Kampala, Uganda', 'John Doe', '+256700000001', datetime('now'), datetime('now'))
-                    `, (err) => {
-                      if (err) {
-                        console.error('Error inserting central default facility:', err);
-                        reject(err);
-                        return;
-                      }
-                      
-                      centralDb.run(`
-                        INSERT OR IGNORE INTO inventory_items (id, name, description, category, sku, unit, 
-                                 current_stock, min_stock, max_stock, cost, supplier, facility_id, location, 
-                                 created_at, updated_at, status) 
-                        VALUES ('item-1', 'Paracetamol 500mg', 'Pain relief medication', 'Drugs', 'PAR001', 
-                                'Packs', 500, 50, 1000, 5000.00, 'Pharma Ltd', 'facility-1', 'Shelf A1', 
-                                datetime('now'), datetime('now'), 'active')
-                      `, (err) => {
-                        if (err) {
-                          console.error('Error inserting central default item:', err);
-                          reject(err);
-                          return;
-                        }
-
-                        centralDb.close();
-                        console.log('✅ Central database initialized');
-                        resolve();
-                      });
-                    });
-                  });
-                });
-              });
-            });
-          });
-        });
-      });
-    } else {
-      resolve();
+      fs.writeFileSync(CENTRAL_DATA_FILE, JSON.stringify(centralData, null, 2));
+      console.log('✅ Central database initialized');
     }
-  });
+  } catch (error) {
+    console.error('❌ Error initializing central database:', error);
+  }
 }
 
 // Initialize central database
-initCentralDb().then(() => {
-  console.log('Central database initialized successfully');
-}).catch(err => {
-  console.error('Error initializing central database:', err);
-});
+initCentralDb();
 
 // Download central database
 app.get('/api/central-db/download', authenticateBypass, authenticateToken, (req, res) => {
   try {
-    if (!fs.existsSync(CENTRAL_DB_PATH)) {
+    if (!fs.existsSync(CENTRAL_DATA_FILE)) {
       return res.status(404).json({ error: 'Central database not found' });
     }
 
-    const dbBuffer = fs.readFileSync(CENTRAL_DB_PATH);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'attachment; filename="central_ims.db"');
-    res.setHeader('Content-Length', dbBuffer.length);
-    res.send(dbBuffer);
+    const centralData = fs.readFileSync(CENTRAL_DATA_FILE, 'utf8');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="central_ims_data.json"');
+    res.send(centralData);
     
     console.log('📥 Central database downloaded');
   } catch (error) {
@@ -704,18 +514,18 @@ app.get('/api/central-db/download', authenticateBypass, authenticateToken, (req,
 // Upload database from client
 app.post('/api/central-db/upload', authenticateBypass, authenticateToken, (req, res) => {
   try {
-    // Handle the uploaded database
-    const dbBuffer = Buffer.from(req.body.database || req.body);
+    // Handle the uploaded database data
+    const uploadedData = req.body.database || req.body;
     
     // Create backup of current database
-    if (fs.existsSync(CENTRAL_DB_PATH)) {
-      const backupPath = `${CENTRAL_DB_PATH}.backup.${Date.now()}`;
-      fs.copyFileSync(CENTRAL_DB_PATH, backupPath);
+    if (fs.existsSync(CENTRAL_DATA_FILE)) {
+      const backupPath = `${CENTRAL_DATA_FILE}.backup.${Date.now()}`;
+      fs.copyFileSync(CENTRAL_DATA_FILE, backupPath);
       console.log(`💾 Backup created: ${backupPath}`);
     }
 
     // Write new database
-    fs.writeFileSync(CENTRAL_DB_PATH, dbBuffer);
+    fs.writeFileSync(CENTRAL_DATA_FILE, JSON.stringify(uploadedData, null, 2));
     
     console.log('📤 Central database uploaded successfully');
     res.json({ 
